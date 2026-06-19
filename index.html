@@ -335,20 +335,53 @@
       text-align:center; background:var(--bg2);
       transition:transform .2s;
     }
+    .advisor { position:relative; overflow:hidden; }
     .advisor:hover { transform:translateY(-4px); }
     .advisor.merc  { border:1px solid rgba(248,113,113,.22); }
     .advisor.venus { border:1px solid rgba(74,222,128,.2); }
     .advisor.oracle{ border:1px solid rgba(167,139,250,.22); }
 
+    /* soft persona-colored glow blooming from the top of each card */
+    .advisor::after {
+      content:''; position:absolute; top:-90px; left:50%;
+      transform:translateX(-50%);
+      width:240px; height:200px; border-radius:50%;
+      pointer-events:none; z-index:0; opacity:.5;
+      filter:blur(36px);
+    }
+    .advisor.merc::after   { background:radial-gradient(circle, rgba(248,113,113,.30), transparent 70%); }
+    .advisor.venus::after  { background:radial-gradient(circle, rgba(74,222,128,.26),  transparent 70%); }
+    .advisor.oracle::after { background:radial-gradient(circle, rgba(167,139,250,.32), transparent 70%); }
+    .advisor > * { position:relative; z-index:1; }
+
     .av-wrap { display:flex; justify-content:center; margin-bottom:16px; }
     .av {
+      position:relative; z-index:0;
       width:70px; height:70px; border-radius:50%;
       display:flex; align-items:center; justify-content:center;
       font-size:28px; animation:float 4.5s ease-in-out infinite;
     }
-    .advisor.merc  .av { background:rgba(248,113,113,.1);  border:1px solid rgba(248,113,113,.25); animation-delay:0s; }
-    .advisor.venus .av { background:rgba(74,222,128,.09);  border:1px solid rgba(74,222,128,.25);  animation-delay:1.5s; }
-    .advisor.oracle .av{ background:rgba(167,139,250,.1);  border:1px solid rgba(167,139,250,.25); animation-delay:3s; }
+    /* rotating aura ring (masked conic gradient) */
+    .av::before {
+      content:''; position:absolute; inset:-6px; border-radius:50%;
+      padding:2px; z-index:-1;
+      background:conic-gradient(from 0deg, transparent 0%, var(--aura) 35%, #fff 50%, var(--aura) 65%, transparent 100%);
+      -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+      -webkit-mask-composite:xor; mask-composite:exclude;
+      animation:auraSpin 7s linear infinite;
+    }
+    /* breathing halo */
+    .av::after {
+      content:''; position:absolute; inset:0; border-radius:50%; z-index:-1;
+      box-shadow:0 0 24px var(--halo), inset 0 0 16px var(--halo);
+      animation:auraPulse 3.2s ease-in-out infinite;
+    }
+    @keyframes auraSpin  { to { transform:rotate(360deg); } }
+    @keyframes auraPulse { 0%,100%{opacity:.45} 50%{opacity:1} }
+
+    .advisor.merc  .av { --aura:var(--red);    --halo:rgba(248,113,113,.45); background:rgba(248,113,113,.12); border:1px solid rgba(248,113,113,.3); color:#ffc2c2; text-shadow:0 0 14px rgba(248,113,113,.85); animation-delay:0s; }
+    .advisor.venus .av { --aura:var(--green);  --halo:rgba(74,222,128,.42);  background:rgba(74,222,128,.10);  border:1px solid rgba(74,222,128,.3);  color:#bdfdd2; text-shadow:0 0 14px rgba(74,222,128,.85); animation-delay:1.5s; }
+    .advisor.oracle .av{ --aura:var(--purple); --halo:rgba(167,139,250,.45); background:rgba(167,139,250,.12); border:1px solid rgba(167,139,250,.3); animation-delay:3s; }
     @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
 
     .av-name { font-size:18px; font-weight:700; margin-bottom:3px; }
