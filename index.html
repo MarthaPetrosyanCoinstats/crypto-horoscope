@@ -148,35 +148,45 @@
     /* ── Terminal window ── */
     .terminal-wrap {
       margin: 64px 0;
-      border-radius: var(--radius);
+      border-radius: 16px;
       overflow: hidden;
-      border: 1px solid var(--border);
-      background: #0a0a0c;
+      border: 1px solid rgba(167,139,250,0.2);
+      background: #09090c;
+      box-shadow: 0 0 0 1px rgba(167,139,250,0.06), 0 24px 48px rgba(0,0,0,0.5);
     }
     .terminal-bar {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 12px 16px;
-      background: var(--bg3);
-      border-bottom: 1px solid var(--border);
+      justify-content: space-between;
+      padding: 10px 20px;
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
     }
-    .dot { width: 12px; height: 12px; border-radius: 50%; }
-    .dot.red { background: #ff5f57; }
-    .dot.yellow { background: #febc2e; }
-    .dot.green { background: #28c840; }
-    .terminal-title {
-      flex: 1;
-      text-align: center;
+    .terminal-cmd {
       font-family: var(--font-mono);
       font-size: 12px;
-      color: var(--muted);
+      color: rgba(167,139,250,0.5);
+      letter-spacing: 0.02em;
+    }
+    .terminal-cmd .prompt-sign {
+      color: rgba(167,139,250,0.3);
+      margin-right: 8px;
+    }
+    .terminal-badge {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: rgba(167,139,250,0.3);
+      border: 1px solid rgba(167,139,250,0.12);
+      padding: 2px 8px;
+      border-radius: 4px;
     }
     .terminal-body {
-      padding: 24px 28px;
+      padding: 28px 32px;
       font-family: var(--font-mono);
       font-size: 13px;
-      line-height: 1.65;
+      line-height: 1.7;
       overflow-x: auto;
       white-space: pre;
     }
@@ -391,10 +401,8 @@
 <div class="container" id="screenshots">
   <div class="terminal-wrap">
     <div class="terminal-bar">
-      <span class="dot red"></span>
-      <span class="dot yellow"></span>
-      <span class="dot green"></span>
-      <span class="terminal-title">python3 horoscope.py BTC ETH SOL DOGE ADA</span>
+      <span class="terminal-cmd"><span class="prompt-sign">$</span>python3 horoscope.py BTC ETH SOL DOGE ADA</span>
+      <span class="terminal-badge">terminal</span>
     </div>
     <div class="terminal-body"><span class="t-rule">────────────────</span> <span class="t-purple t-bold">🔮  Crypto Horoscope  ·  Friday, June 19, 2026</span> <span class="t-rule">────────────────</span>
 
@@ -459,10 +467,8 @@
   <p class="section-label" style="margin-bottom:16px">--share mode — paste directly into Discord, Slack, or Twitter</p>
   <div class="terminal-wrap">
     <div class="terminal-bar">
-      <span class="dot red"></span>
-      <span class="dot yellow"></span>
-      <span class="dot green"></span>
-      <span class="terminal-title">python3 horoscope.py --share BTC ETH SOL DOGE</span>
+      <span class="terminal-cmd"><span class="prompt-sign">$</span>python3 horoscope.py --share BTC ETH SOL DOGE</span>
+      <span class="terminal-badge">--share</span>
     </div>
     <div class="terminal-body"><span class="t-purple t-bold">🔮 Crypto Horoscope — Jun 19, 2026</span>
 
