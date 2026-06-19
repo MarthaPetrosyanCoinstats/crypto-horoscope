@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-crypto-horoscope — Your daily cosmic guidance, powered by real market data.
+Crypto Horoscope — Your daily cosmic guidance, powered by real market data.
 
 The stars have spoken. Your portfolio has not.
 
@@ -29,13 +29,13 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from rich.console import Console
+    from rich.console import Console, Group
     from rich.panel import Panel
     from rich.text import Text
     from rich.rule import Rule
-    from rich.columns import Columns
+    from rich.align import Align
+    from rich.table import Table
     from rich.padding import Padding
-    from rich.style import Style
     HAS_RICH = True
     console = Console()
 except ImportError:
@@ -45,7 +45,7 @@ except ImportError:
 # ─── Config ──────────────────────────────────────────────────────────────────
 
 BASE_URL = "https://openapiv1.coinstats.app"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 DEFAULT_COINS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "DOT"]
 
@@ -350,13 +350,21 @@ def _pct_color(val: float) -> str:
 
 def render_rich(reading: dict) -> None:
     """Beautiful terminal output using Rich."""
-    from rich.table import Table
-
     today = datetime.fromisoformat(reading["date"]).strftime("%A, %B %-d, %Y")
     market = reading["market"]
 
+    # ── Header banner ─────────────────────────────────────────────────────
+    header_text = Text(justify="center")
+    header_text.append("🔮  Crypto Horoscope\n", style="bold gold1")
+    header_text.append(f"{today}\n", style="bright_white")
+    header_text.append("✦  ·  ✦  ·  ✦  ·  ✦  ·  ✦  ·  ✦", style="dim yellow")
+
     console.print()
-    console.rule(f"[bold magenta]🔮  CRYPTO HOROSCOPE  ·  {today}[/]", style="magenta")
+    console.print(Panel(
+        Align.center(header_text),
+        border_style="medium_purple",
+        padding=(1, 4),
+    ))
     console.print()
 
     # ── Market overview ───────────────────────────────────────────────────
@@ -365,84 +373,137 @@ def render_rich(reading: dict) -> None:
     cap_change = market["cap_change"]
     dom = market["btc_dominance"]
 
-    cap_pct = Text(f"  {_pct_str(cap_change)}", style=_pct_color(cap_change))
-    dom_pct = Text(f"  BTC dominance {dom:.1f}%")
+    stats = Table.grid(padding=(0, 3))
+    stats.add_column(style="dim")
+    stats.add_column(style="bold bright_white")
+    stats.add_row("Market Cap", f"${cap_b:.2f}T")
+    stats.add_row("Volume 24h", f"${vol_b:.1f}B")
+    stats.add_row("BTC Dominance", f"{dom:.1f}%")
+    stats.add_row(
+        "24h Change",
+        Text(_pct_str(cap_change), style=_pct_color(cap_change)),
+    )
 
-    stats_line = (
-        f"[dim]Market Cap:[/] [bold]${cap_b:.2f}T[/]"
-        + f"  [dim]Volume 24h:[/] [bold]${vol_b:.1f}B[/]"
-        + f"  [dim]BTC Dom:[/] [bold]{dom:.1f}%[/]"
-        + f"  [dim]Change:[/] [{_pct_color(cap_change)}]{_pct_str(cap_change)}[/]"
+    market_content = Group(
+        stats,
+        Text(""),
+        Text(market["reading"], style="italic #c9b8f0"),
     )
 
     console.print(Panel(
-        f"{stats_line}\n\n[italic]{market['reading']}[/italic]",
-        title="[bold cyan]✦ THE COSMIC MARKET[/]",
+        market_content,
+        title="[bold cyan]✦  The Cosmic Market[/]",
         border_style="cyan",
         padding=(1, 2),
     ))
     console.print()
 
-    # ── Per-coin readings ─────────────────────────────────────────────────
-    console.print("[bold cyan]✦ YOUR SIGNS[/]")
+    # ── Coin panels ───────────────────────────────────────────────────────
+    console.rule("[bold medium_purple]✦  Your Signs  ✦[/]", style="dim medium_purple")
     console.print()
 
     for coin in reading["coins"]:
         sym = coin["symbol"]
         glyph = COIN_GLYPHS.get(sym, "◈")
         price = coin["price"]
-        d = coin["change_1d"]
-        w = coin["change_1w"]
-        m = coin["change_1m"]
+        d1h = coin.get("change_1h", 0) or 0
+        d   = coin.get("change_1d", 0) or 0
+        w   = coin.get("change_1w", 0) or 0
+        m   = coin.get("change_1m", 0) or 0
 
-        header = (
-            f"[bold]{glyph} {sym}[/] [dim]{_fmt_price(price)}[/]"
-            f"  [dim]1d[/] [{_pct_color(d)}]{_pct_str(d)}[/]"
-            f"  [dim]1w[/] [{_pct_color(w)}]{_pct_str(w)}[/]"
-            f"  [dim]1m[/] [{_pct_color(m)}]{_pct_str(m)}[/]"
+        # Border tint follows daily trend
+        if d >= 3:
+            border = "green3"
+        elif d <= -5:
+            border = "red3"
+        else:
+            border = "medium_purple"
+
+        stats_text = Text()
+        stats_text.append(_fmt_price(price), style="bold bright_white")
+        stats_text.append("     ")
+        stats_text.append("1h ", style="dim")
+        stats_text.append(_pct_str(d1h), style=_pct_color(d1h))
+        stats_text.append("   1d ", style="dim")
+        stats_text.append(_pct_str(d), style=_pct_color(d))
+        stats_text.append("   1w ", style="dim")
+        stats_text.append(_pct_str(w), style=_pct_color(w))
+        stats_text.append("   1m ", style="dim")
+        stats_text.append(_pct_str(m), style=_pct_color(m))
+
+        coin_content = Group(
+            stats_text,
+            Text(""),
+            Text(f'"{coin["reading"]}"', style="italic #c9b8f0"),
         )
-        console.print(f"  {header}")
-        console.print(f"  [italic dim]{coin['reading']}[/]")
+
+        console.print(Panel(
+            coin_content,
+            title=f"[gold1]{glyph}[/]  [bold white]{coin['name']}[/]  [dim]{sym}[/]",
+            border_style=border,
+            padding=(1, 2),
+        ))
         console.print()
 
-    # ── Mercury / Venus ───────────────────────────────────────────────────
+    # ── Mercury's Curse ───────────────────────────────────────────────────
     curse = reading.get("mercury_curse")
-    blessing = reading.get("venus_blessing")
-
     if curse:
+        c_glyph = COIN_GLYPHS.get(curse["symbol"], "◈")
+        curse_header = Text()
+        curse_header.append(f"{c_glyph}  {curse['symbol']}  ", style="bold red")
+        curse_header.append(_pct_str(curse["change_1d"]) + " today", style="bold red")
+
         console.print(Panel(
-            f"[bold red]{curse['symbol']}[/]  [{_pct_color(curse['change_1d'])}]{_pct_str(curse['change_1d'])} today[/]\n\n"
-            f"[italic]{curse['reading']}[/italic]",
-            title="[bold red]☿ MERCURY'S CURSE — Worst Performer[/]",
+            Group(
+                curse_header,
+                Text(""),
+                Text(f'"{curse["reading"]}"', style="italic #ffb3b3"),
+            ),
+            title="[bold red]☿  Mercury's Curse  —  Worst Today[/]",
             border_style="red",
             padding=(1, 2),
         ))
         console.print()
 
+    # ── Venus's Blessing ──────────────────────────────────────────────────
+    blessing = reading.get("venus_blessing")
     if blessing:
+        b_glyph = COIN_GLYPHS.get(blessing["symbol"], "◈")
+        blessing_header = Text()
+        blessing_header.append(f"{b_glyph}  {blessing['symbol']}  ", style="bold green3")
+        blessing_header.append(f"+{abs(blessing['change_1w']):.1f}% this week", style="bold green3")
+
         console.print(Panel(
-            f"[bold green]{blessing['symbol']}[/]  [{_pct_color(blessing['change_1w'])}]+{abs(blessing['change_1w']):.1f}% this week[/]\n\n"
-            f"[italic]{blessing['reading']}[/italic]",
-            title="[bold green]♀ VENUS'S BLESSING — Weekly Brightest[/]",
-            border_style="green",
+            Group(
+                blessing_header,
+                Text(""),
+                Text(f'"{blessing["reading"]}"', style="italic #b3ffcc"),
+            ),
+            title="[bold green3]♀  Venus's Blessing  —  Weekly Brightest[/]",
+            border_style="green3",
             padding=(1, 2),
         ))
         console.print()
 
-    # ── Prophecy + footer ─────────────────────────────────────────────────
-    lucky = "  ·  ".join(reading["lucky_numbers"])
+    # ── Prophecy ─────────────────────────────────────────────────────────
+    lucky = "   ✦   ".join(reading["lucky_numbers"])
     console.print(Panel(
-        f"[italic]\"{reading['prophecy']}\"[/italic]\n\n"
-        f"[dim]Lucky numbers:[/] [bold]{lucky}[/]",
-        title="[bold magenta]🔮 TODAY'S PROPHECY[/]",
+        Group(
+            Text(f'"{reading["prophecy"]}"', style="italic bright_white"),
+            Text(""),
+            Text(f"Lucky numbers:  {lucky}", style="dim gold1"),
+        ),
+        title="[bold magenta]🔮  Today's Prophecy[/]",
         border_style="magenta",
         padding=(1, 2),
     ))
 
+    # ── Footer ────────────────────────────────────────────────────────────
     console.print()
     console.rule(
-        "[dim]Powered by [link=https://coinstats.app/api/]CoinStats API[/link]  ·  Not financial advice. Also not actual astrology.[/]",
-        style="dim"
+        "[dim]Powered by [link=https://coinstats.app/api/]CoinStats API[/link]"
+        "  ·  coinstats.app/api  ·  Not financial advice. Also not actual astrology.[/]",
+        style="dim medium_purple",
     )
     console.print()
 
@@ -454,7 +515,7 @@ def render_plain(reading: dict) -> None:
 
     sep = "=" * 60
     print(f"\n{sep}")
-    print(f"  CRYPTO HOROSCOPE — {today}")
+    print(f"  Crypto Horoscope — {today}")
     print(sep)
 
     cap_b = market["cap"] / 1e12
@@ -495,7 +556,7 @@ def render_share(reading: dict) -> None:
     market = reading["market"]
 
     lines = [
-        f"🔮 CRYPTO HOROSCOPE — {today}",
+        f"🔮 Crypto Horoscope — {today}",
         "",
         f"Market: ${market['cap']/1e12:.2f}T  {_pct_str(market['cap_change'])}  BTC dom {market['btc_dominance']:.1f}%",
         f"\"{market['reading'][:120]}\"" if len(market['reading']) > 120 else f"\"{market['reading']}\"",
@@ -541,7 +602,7 @@ def get_api_key() -> str:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="🔮 crypto-horoscope: daily cosmic guidance powered by real market data",
+        description="🔮 Crypto Horoscope: daily cosmic guidance powered by real market data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
@@ -579,7 +640,7 @@ environment:
     parser.add_argument(
         "--version",
         action="version",
-        version=f"crypto-horoscope {VERSION}",
+        version=f"Crypto Horoscope {VERSION}",
     )
     args = parser.parse_args()
 
