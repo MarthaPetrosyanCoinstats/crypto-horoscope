@@ -787,6 +787,23 @@
 </footer>
 
 <script>
+// Smooth-scroll in-page nav links without leaving a #hash in the URL
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const target = document.getElementById(a.getAttribute('href').slice(1));
+    if (!target) return;
+    e.preventDefault();
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    history.replaceState(null, '', location.pathname + location.search);
+  });
+});
+// If the page loads with a stale #hash, scroll there once then clean the URL
+if (location.hash) {
+  const t = document.getElementById(location.hash.slice(1));
+  if (t) requestAnimationFrame(() => t.scrollIntoView());
+  history.replaceState(null, '', location.pathname + location.search);
+}
+
 // Fade-up on scroll
 const io = new IntersectionObserver(entries => {
   entries.forEach(e => {
