@@ -1,57 +1,114 @@
-# 🔮 crypto-horoscope
+# 🔮 Crypto Horoscope
 
-> Your daily cosmic portfolio guidance, powered by real market data.
+> Three mythological narrators read your coins from live market data.
 
 **Mercury is in retrograde, and so is your ETH position.**
 
-`crypto-horoscope` is a CLI tool that reads live cryptocurrency prices, market sentiment, and your portfolio's performance — then translates it all into the ancient language of astrology. The readings are deterministic per day (same data = same reading), genuinely driven by real numbers, and, most importantly, absolutely not financial advice.
+Crypto Horoscope is a CLI tool that pulls live cryptocurrency prices and market
+data, then hands them to a cast of three ancient narrators who deliver your
+reading in character — each with an ASCII portrait, a distinct voice, and an
+opinion grounded in the real numbers.
+
+- **☿ Mercury — The Messenger** · speed, momentum, the last hour, trading volume
+- **♀ Venus — The Valuator** · sentiment, fear & greed, longer-term value
+- **🔮 The Oracle — The Prophet** · macro cycles, riddles, what the data hints at
+
+Speeches are **AI-generated with Claude** when an `ANTHROPIC_API_KEY` is present,
+and fall back to **built-in, data-driven templates** otherwise — either way, every
+line references your coin's actual price, moves, and volume. And, most
+importantly, none of it is financial advice.
 
 ```
-──────────────── 🔮  CRYPTO HOROSCOPE  ·  Friday, June 19, 2026 ────────────────
+────────────────────────────   ₿  Bitcoin  BTC   ─────────────────────────────
 
-╭──────────────────────────── ✦ THE COSMIC MARKET ─────────────────────────────╮
-│  Market Cap: $2.25T  Volume 24h: $77.4B  BTC Dom: 55.7%  Change: ▼1.97%      │
-│                                                                               │
-│  Mercury dances in retrograde, and your portfolio dances with it — downward. │
-╰──────────────────────────────────────────────────────────────────────────────╯
+   $62,731    1h ▲0.34%  1d ▼2.53%  1w ▼1.21%  1m ▼19.00%
+   vol $31.19B    mcap $1.26T    rank #1
 
-✦ YOUR SIGNS
+    ~ summoning the messenger...
+           .---.
+       /\ ( o o ) /\
+       \/  \ ~ /  \/
+          __) (__
+         /  | |  \    ()
+        |   | |   |  (())
+         \  | |  /    ||
+          )_| |_(     ||
+         /   |   \    ||
+        |_  / \  _|   ||
 
-  ₿ BTC $62,588  1d ▼2.23%  1w ▼1.95%  1m ▼19.20%
-  The bears have touched Bitcoin, leaving a mark of -2.2%. Your conviction
-  shall be tested.
+   ☿  MERCURY  ·  The Messenger
 
-  ◎ SOL $68.28  1d ▼3.89%  1w ▲1.94%  1m ▼19.46%
-  Solana descends 3.9% as Mercury casts shadows across your holdings.
+    Quick, quick — caught the BTC tape mid-flight. BTC is down 2.5% on the
+    day, +0.34% in the last hour alone — Flat-footed, this one. No rush in
+    the wires. And $31.19B changed hands in a day — that's the crowd voting
+    with their feet. Speed is the only edge nobody can fake. Keep up.
 
-╭──────────────────── ☿ MERCURY'S CURSE — Worst Performer ─────────────────────╮
-│  AVAX  ▼8.93% today                                                           │
-│  Avalanche has entered its shadow period. Consider burning sage. And your     │
-│  position.                                                                    │
-╰──────────────────────────────────────────────────────────────────────────────╯
+    ~ drawing the veil aside...
+       *  .   +   .  *
+          .-'''-.
+         / o   o \
+      .  \   v   /  .
+          '.___.'
+         .-'   '-.
+     *  /       \  *
+       /         \
+       '._  _  _.'
+      +   '|' '|'  *
 
-╭──────────────────────────── 🔮 TODAY'S PROPHECY ─────────────────────────────╮
-│  "A pattern forms on the charts. Analysts shall name it something             │
-│  confident. They will disagree."                                              │
-│                                                                               │
-│  Lucky numbers: $7.82  ·  $0.9501  ·  $6.03                                  │
-╰──────────────────────────────────────────────────────────────────────────────╯
+   ♀  VENUS  ·  The Valuator
+
+    Come closer, darling. Bitcoin sighs -2.5% lower, a small ache, nothing
+    more. Desire cools before it returns; this is the cooling. On the week
+    it carries -1.2%, and the heart remembers the week longer than the hour.
+    Value is only desire that hasn't been priced in yet. Wait for the wanting.
+
+    ~ the smoke takes shape...
+        (  )  (  )
+         )(  )(  )
+          .-~~~-.
+         ( O   O )
+          )  ^  (
+         /  '-'  \
+        / |   | \
+       /  |___|  \
+          || ||
+         _||_||_
+
+   🔮  THE ORACLE  ·  The Prophet
+
+    At $62,731 the coin stands — neither high nor low, only waiting to be
+    told which it was. A slow tide of -19% over thirty nights — the cycle
+    exhales before it draws breath. Seven days gave -1.2%. Seven is never
+    the number that matters. Return when the candles confirm what the Oracle
+    has already said.
+
+───────────────────────────────────── ✦ ──────────────────────────────────────
 ```
+
+> In a real terminal each narrator is *summoned*: a beat of silence, a portrait
+> drawn line by line, then the speech typed out character by character.
+
+## Meet the narrators
+
+| Narrator | Domain | Voice |
+| --- | --- | --- |
+| **☿ Mercury** | Speed, momentum, the last hour, volume | Rapid-fire and energetic. Quotes the hour-over-hour move and the day's volume, then tells you to keep up. |
+| **♀ Venus** | Sentiment, desire, longer-term value | Warm but razor-sharp. Reads the day and week as emotion — heartbreak, hunger, patience. |
+| **🔮 The Oracle** | Macro cycles, the long arc | Cryptic and ominous. Encodes the price and the 30-day move into a riddle you'll understand in hindsight. |
 
 ## Features
 
-- **Real data, cosmic language** — readings are driven by actual 1h/1d/1w/1m price changes, market cap, BTC dominance, and volume
-- **Deterministic per day** — same market data = same reading, seeded by date + current prices
+- **Three narrators, real data** — each speech is rooted in live price, 1h/1d/1w/1m changes, volume, and market cap
+- **AI or offline** — uses Claude when `ANTHROPIC_API_KEY` is set; otherwise built-in data-driven templates (no extra setup, fully offline, free)
+- **Theatrical reveal** — summoning lines, line-by-line ASCII portraits, and a typewriter speech effect
+- **Deterministic per day** — the template voices are seeded by date + current prices, so they're consistent through the day and fresh each morning
 - **Any coins** — pass any symbols you hold (`BTC ETH SOL DOGE`) or use the default top 10
-- **Mercury's Curse** — highlights your worst daily performer with appropriately dramatic commentary
-- **Venus's Blessing** — celebrates your weekly outperformer
-- **Three output modes** — rich terminal, shareable plain text, or raw JSON
-- **Zero BS** — no charts to install, no wallet to connect, no data stored
+- **Four output modes** — animated rich terminal, plain text, shareable text, or raw JSON
 
 ## Installation
 
 ```bash
-git clone https://github.com/marthastcoinstats/crypto-horoscope
+git clone https://github.com/MarthaPetrosyanCoinstats/crypto-horoscope
 cd crypto-horoscope
 pip install -r requirements.txt
 ```
@@ -62,7 +119,18 @@ Get a free API key at [openapi.coinstats.app](https://openapi.coinstats.app), th
 export COINSTATS_API_KEY=your_key_here
 ```
 
-Or copy `.env.example` to `.env` and fill it in, then `source .env` before running.
+### Optional: AI narrators
+
+For AI-generated monologues (instead of the built-in templates), install the
+Anthropic SDK and set a key:
+
+```bash
+pip install anthropic
+export ANTHROPIC_API_KEY=your_anthropic_key_here
+# optional: export ANTHROPIC_MODEL=claude-sonnet-4-6
+```
+
+Or copy `.env.example` to `.env`, fill it in, and `source .env` before running.
 
 ## Usage
 
@@ -71,13 +139,16 @@ Or copy `.env.example` to `.env` and fill it in, then `source .env` before runni
 python horoscope.py
 
 # Read for your specific holdings
-python horoscope.py BTC ETH SOL DOGE ADA
+python horoscope.py BTC ETH SOL DOGE
+
+# Skip the reveal animation (instant render)
+python horoscope.py --no-animate BTC ETH SOL
 
 # Compact share-ready output (great for Discord / Slack / Twitter)
 python horoscope.py --share BTC ETH SOL
 
 # Raw JSON (pipe into jq, store in a DB, post to a webhook…)
-python horoscope.py --json BTC ETH | jq '.coins[].reading'
+python horoscope.py --json BTC ETH | jq '.coins[].voices.oracle'
 
 # No Rich? Plain text works too
 python horoscope.py --plain BTC ETH
@@ -86,19 +157,14 @@ python horoscope.py --plain BTC ETH
 ### Example share output
 
 ```
-🔮 CRYPTO HOROSCOPE — Jun 19, 2026
+🔮 Crypto Horoscope — Jun 19, 2026
 
-Market: $2.25T  ▼2.00%  BTC dom 55.7%
-"Mercury dances in retrograde, and your portfolio dances with it — downward."
+Market: $2.26T  ▼2.35%  BTC dom 55.7%
 
-₿ BTC $62,588  1d ▼2.23%  1w ▼1.95%
-Ξ ETH $1,692   1d ▼3.01%  1w ▲0.92%
-◎ SOL $68.28   1d ▼3.89%  1w ▲1.94%
-
-☿ Cursed:  SOL ▼3.89%
-♀ Blessed: SOL +1.9% this week
-
-🔮 "A pattern forms. Analysts shall name it confidently. They will disagree."
+₿ BTC $62,731  1d ▼2.53%  1w ▼1.21%
+  ☿ Quick, quick — caught the BTC tape mid-flight. BTC is down 2.5% on the day…
+  ♀ Come closer, darling. Bitcoin sighs -2.5% lower, a small ache, nothing more…
+  🔮 At $62,731 the coin stands — neither high nor low, only waiting to be told…
 
 Powered by @CoinStatsApp · coinstats.app/api
 ```
@@ -106,19 +172,19 @@ Powered by @CoinStatsApp · coinstats.app/api
 ## How It Works
 
 1. Fetches live market data from the CoinStats API (top 500 coins + global market stats)
-2. Filters to your requested symbols, deduplicates by market cap rank
-3. Seeds a deterministic random number generator using today's date + current prices
-4. Selects horoscope templates based on actual price movements:
-   - Daily/weekly/monthly % changes determine the tone (bullish / bearish / apocalyptic)
-   - BTC dominance affects the overall narrative
-   - Volume changes trigger special commentary
-5. Renders with [Rich](https://github.com/Textualize/rich) for beautiful terminal output
+2. Filters to your requested symbols, deduplicating by market cap rank
+3. For each coin, generates three narrator speeches:
+   - **With Claude** — each persona's character is passed as a system prompt, along with the coin's real price, moves, volume, and market cap; Claude returns a tight 3–5 sentence monologue in voice
+   - **Without Claude** — seeded, data-driven templates assemble each voice from the same real numbers (deterministic per day)
+4. Renders the stage: header, market overview, then each coin as a three-scene reveal — Mercury, Venus, the Oracle
+5. Uses [Rich](https://github.com/Textualize/rich) for the animated terminal output
 
 ## Requirements
 
 - Python 3.9+
 - `requests` — API calls
-- `rich` — beautiful terminal output (optional but recommended)
+- `rich` — animated terminal output
+- `anthropic` — *optional*, only for AI-generated narrators
 
 ## Powered by
 

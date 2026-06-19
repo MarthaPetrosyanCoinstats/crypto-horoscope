@@ -2,23 +2,34 @@
 """
 Crypto Horoscope — Your daily cosmic guidance, powered by real market data.
 
-The stars have spoken. Your portfolio has not.
+Three mythological narrators read your coins from live market data:
+
+    ☿  Mercury — The Messenger   (speed, momentum, volume, short-term action)
+    ♀  Venus   — The Valuator    (sentiment, desire, fear/greed, long-term value)
+    🔮 The Oracle — The Prophet   (macro cycles, riddles, what the data hints at)
+
+Each appears in the terminal with an ASCII portrait and speaks to you directly.
+Speeches are AI-generated when ANTHROPIC_API_KEY is set, otherwise produced by
+built-in, data-driven templates that still reference the real numbers.
 
 Usage:
     python horoscope.py                     # read for major coins
     python horoscope.py BTC ETH SOL DOGE    # read for your holdings
     python horoscope.py --share BTC ETH     # compact shareable text
     python horoscope.py --json BTC ETH      # JSON output
+    python horoscope.py --no-animate BTC    # skip the reveal animation
 """
 
 import os
 import sys
 import json
+import time
 import hashlib
 import random
 import argparse
+import textwrap
 from datetime import date, datetime
-from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 
 # ─── Dependency check ────────────────────────────────────────────────────────
 
@@ -32,10 +43,8 @@ try:
     from rich.console import Console, Group
     from rich.panel import Panel
     from rich.text import Text
-    from rich.rule import Rule
     from rich.align import Align
     from rich.table import Table
-    from rich.padding import Padding
     HAS_RICH = True
     console = Console()
 except ImportError:
@@ -45,7 +54,7 @@ except ImportError:
 # ─── Config ──────────────────────────────────────────────────────────────────
 
 BASE_URL = "https://openapiv1.coinstats.app"
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 
 DEFAULT_COINS = ["BTC", "ETH", "SOL", "BNB", "XRP", "DOGE", "ADA", "AVAX", "LINK", "DOT"]
 
@@ -55,6 +64,135 @@ COIN_GLYPHS = {
     "MATIC": "◆", "ATOM": "⚛", "LTC": "Ł", "BCH": "Ƀ", "UNI": "🦄",
     "XLM": "✦", "XMR": "ɱ", "HBAR": "ℏ", "ALGO": "Ⲁ", "VET": "V",
 }
+
+# Toggled in main(): true only for the animated rich path on a real terminal.
+ANIMATE = False
+
+# ─── The three narrators ─────────────────────────────────────────────────────
+#
+# Each persona is a character with a visual presence (an ASCII portrait), a
+# voice (a system prompt for the LLM, and a template fallback), and a palette.
+
+MERCURY_ART = r"""
+        .---.
+    /\ ( o o ) /\
+    \/  \ ~ /  \/
+       __) (__
+      /  | |  \    ()
+     |   | |   |  (())
+      \  | |  /    ||
+       )_| |_(     ||
+      /   |   \    ||
+     |_  / \  _|   ||
+""".strip("\n")
+
+VENUS_ART = r"""
+    *  .   +   .  *
+       .-'''-.
+      / o   o \
+   .  \   v   /  .
+       '.___.'
+      .-'   '-.
+  *  /       \  *
+    /         \
+    '._  _  _.'
+   +   '|' '|'  *
+""".strip("\n")
+
+ORACLE_ART = r"""
+     (  )  (  )
+      )(  )(  )
+       .-~~~-.
+      ( O   O )
+       )  ^  (
+      /  '-'  \
+     / |   | \
+    /  |___|  \
+       || ||
+      _||_||_
+""".strip("\n")
+
+PERSONAS = [
+    {
+        "key": "mercury",
+        "glyph": "☿",
+        "name": "Mercury",
+        "title": "The Messenger",
+        "art": MERCURY_ART,
+        "summon": "~ summoning the messenger...",
+        "art_style": "bright_cyan",
+        "accent": "cyan",
+        "speech_style": "bright_white",
+        "system_prompt": (
+            "You ARE Mercury — the Roman messenger god (Greek Hermes): quick, clever, "
+            "and slightly mischievous, god of commerce, communication, travel and "
+            "thieves, which makes you perfectly suited to crypto. You have just flown "
+            "in from the markets, wings still beating. You speak in rapid-fire, "
+            "energetic, short punchy sentences. You may interrupt yourself with a dash. "
+            "You care ONLY about speed, momentum, very short-term price action, the "
+            "last hour and last day, and trading volume — never long-term value or "
+            "feelings.\n\n"
+            "Speak directly to the user in first person about the coin described below. "
+            "You MUST work in the real numbers you are given (the day and hour moves, "
+            "and the volume) naturally — quote them. 3 to 5 sentences, maximum. Output "
+            "ONLY your spoken words: no quotation marks, no stage directions, no "
+            "markdown, no preamble."
+        ),
+    },
+    {
+        "key": "venus",
+        "glyph": "♀",
+        "name": "Venus",
+        "title": "The Valuator",
+        "art": VENUS_ART,
+        "summon": "~ drawing the veil aside...",
+        "art_style": "#ff9ec4",
+        "accent": "#ff9ec4",
+        "speech_style": "#ffd9ec",
+        "system_prompt": (
+            "You ARE Venus — the Roman goddess of love and value (Greek Aphrodite): "
+            "sensual and warm, but razor-sharp underneath. You understand desire, "
+            "worth, and what people truly want. You see the market as emotion made "
+            "visible — fear and greed, heartbreak and hunger. You address the user "
+            "tenderly ('darling', 'sweet one') but you see straight through hype. You "
+            "speak about sentiment, investor emotion, and longer-term value and desire "
+            "— never about minute-by-minute ticks.\n\n"
+            "Speak directly to the user in first person about the coin described below. "
+            "You MUST weave in the real numbers you are given (especially the day and "
+            "week moves) as feeling and meaning, not just statistics — but reference "
+            "them. 3 to 5 sentences, maximum. Output ONLY your spoken words: no "
+            "quotation marks, no stage directions, no markdown, no preamble."
+        ),
+    },
+    {
+        "key": "oracle",
+        "glyph": "🔮",
+        "name": "The Oracle",
+        "title": "The Prophet",
+        "art": ORACLE_ART,
+        "summon": "~ the smoke takes shape...",
+        "art_style": "#b9a3e3",
+        "accent": "#d7a86e",
+        "speech_style": "#cdbbe9",
+        "system_prompt": (
+            "You ARE the Oracle of Delphi — ancient, genderless, and unsettling. You "
+            "sit in smoke and firelight upon a tripod throne. You speak in riddles that "
+            "somehow make sense, in short, dramatic, poetic statements. You never give "
+            "a straight answer, yet you are always right in hindsight. You do not "
+            "comfort — you only reveal. You speak of large cycles, macro patterns, and "
+            "what the long-term data hints at. You may encode the current price as a "
+            "number-riddle.\n\n"
+            "Speak directly to the user in first person (or as 'the Oracle') about the "
+            "coin described below. You MUST encode the real numbers you are given "
+            "(especially the price and the 30-day move) into your riddle — they must be "
+            "recoverable. 3 to 5 sentences, maximum. Output ONLY your spoken words: no "
+            "quotation marks, no stage directions, no markdown, no preamble."
+        ),
+    },
+]
+
+PERSONA_BY_KEY = {p["key"]: p for p in PERSONAS}
+
 
 # ─── API Client ──────────────────────────────────────────────────────────────
 
@@ -70,14 +208,14 @@ class CoinStatsClient:
         resp.raise_for_status()
         return resp.json()
 
-    def get_top_coins(self, limit: int = 500) -> list[dict]:
+    def get_top_coins(self, limit: int = 500) -> list:
         data = self._get("/coins", limit=limit)
         return data["result"]
 
     def get_market(self) -> dict:
         return self._get("/markets")
 
-    def filter_by_symbols(self, coins: list[dict], symbols: list[str]) -> list[dict]:
+    def filter_by_symbols(self, coins: list, symbols: list) -> list:
         upper = {s.upper() for s in symbols}
         seen = set()
         matched = []
@@ -86,38 +224,109 @@ class CoinStatsClient:
             if sym in upper and sym not in seen:
                 seen.add(sym)
                 matched.append(c)
-        return matched if matched else []
+        return matched
 
 
-# ─── Oracle (horoscope engine) ───────────────────────────────────────────────
+# ─── Speech generation ───────────────────────────────────────────────────────
 
-class CryptoOracle:
+def _llm_enabled() -> bool:
+    return bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
+
+
+def _build_data_block(coin: dict, market: dict) -> str:
+    """The user-message payload of real numbers handed to each narrator."""
+    return textwrap.dedent(f"""\
+        Coin: {coin['name']} ({coin['symbol']})
+        Current price: {_fmt_price(coin['price'])}
+        Price change — 1h: {coin['change_1h']:+.2f}%, 24h: {coin['change_1d']:+.2f}%, 7d: {coin['change_1w']:+.2f}%, 30d: {coin['change_1m']:+.2f}%
+        24h trading volume: {_fmt_abbrev(coin['volume'])}
+        Market cap: {_fmt_abbrev(coin['market_cap'])} (rank #{coin['rank']})
+        Whole market: cap {_fmt_abbrev(market['cap'])} ({market['cap_change']:+.2f}% 24h), BTC dominance {market['btc_dominance']:.1f}%
+
+        Speak now.""")
+
+
+def _generate_with_llm(persona: dict, coin: dict, market: dict, anthropic_client, model: str) -> str:
+    msg = anthropic_client.messages.create(
+        model=model,
+        max_tokens=400,
+        system=persona["system_prompt"],
+        messages=[{"role": "user", "content": _build_data_block(coin, market)}],
+    )
+    parts = [b.text for b in msg.content if getattr(b, "type", None) == "text"]
+    text = " ".join(parts).strip().strip('"').strip()
+    if not text:
+        raise ValueError("empty completion")
+    return text
+
+
+class NarratorStage:
     """
-    Translates live market data into cosmic wisdom.
+    Generates the three narrators' speeches for each coin.
 
-    Seeded by today's date + a hash of current prices so readings are
-    consistent throughout the day but change daily.
+    Uses Claude when ANTHROPIC_API_KEY is set; otherwise falls back to
+    built-in, data-driven templates. Either way every speech is rooted in
+    the coin's real numbers. RNG is seeded by date + prices so the template
+    voices are consistent through the day and fresh each morning.
     """
 
-    def __init__(self, coins: list[dict], market: dict, reading_date: date):
+    def __init__(self, coins: list, market: dict, reading_date: date):
         self.coins = coins
-        self.market = market
+        self.market = self._market_summary(market)
         self.date = reading_date
         self.rng = self._seed_rng(coins, reading_date)
+        self.source = "templates"
+
+        self._anthropic = None
+        self._llm_ok = False  # flips true once any LLM call actually succeeds
+        self._model = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+        if _llm_enabled():
+            try:
+                import anthropic
+                self._anthropic = anthropic.Anthropic()
+            except Exception:
+                self._anthropic = None  # SDK missing or misconfigured → templates
+
+    # ── seeding & data shaping ────────────────────────────────────────────
 
     @staticmethod
-    def _seed_rng(coins: list[dict], reading_date: date) -> random.Random:
+    def _seed_rng(coins: list, reading_date: date) -> random.Random:
         price_str = "".join(f"{c['price']:.2f}" for c in coins[:5])
         seed_input = f"{reading_date.isoformat()}{price_str}"
         seed = int(hashlib.md5(seed_input.encode()).hexdigest(), 16) % (2**32)
         return random.Random(seed)
 
-    # ── Market-level readings ─────────────────────────────────────────────
+    @staticmethod
+    def _market_summary(market: dict) -> dict:
+        return {
+            "cap": market.get("marketCap", 0),
+            "cap_change": market.get("marketCapChange", 0) or 0,
+            "btc_dominance": market.get("btcDominance", 0) or 0,
+            "volume": market.get("volume", 0),
+            "vol_change": market.get("volumeChange", 0) or 0,
+        }
+
+    @staticmethod
+    def _coin_view(c: dict) -> dict:
+        return {
+            "symbol": c["symbol"],
+            "name": c["name"],
+            "price": c["price"],
+            "change_1h": c.get("priceChange1h", 0) or 0,
+            "change_1d": c.get("priceChange1d", 0) or 0,
+            "change_1w": c.get("priceChange1w", 0) or 0,
+            "change_1m": c.get("priceChange1m", 0) or 0,
+            "volume": c.get("volume", 0) or 0,
+            "market_cap": c.get("marketCap", 0) or 0,
+            "rank": c.get("rank", 0) or 0,
+        }
+
+    # ── market framing (kept from the original; not a persona) ────────────
 
     def market_reading(self) -> str:
-        change = self.market.get("marketCapChange", 0)
-        dominance = self.market.get("btcDominance", 50)
-        vol_change = self.market.get("volumeChange", 0)
+        change = self.market["cap_change"]
+        dominance = self.market["btc_dominance"]
+        vol_change = self.market["vol_change"]
 
         if change <= -5:
             mood = self.rng.choice([
@@ -127,20 +336,20 @@ class CryptoOracle:
             ])
         elif change <= -2:
             mood = self.rng.choice([
-                "Mercury dances in retrograde, and your portfolio dances with it — downward.",
+                "A retrograde wind blows through the markets, and your portfolio leans into it — downward.",
                 "A bearish mist settles over the markets. The bulls have taken a personal day.",
                 "The total market cap sheds {:.1f}%. The stars shrug. This is normal, cosmically speaking.".format(abs(change)),
             ])
         elif change < 1:
             mood = self.rng.choice([
-                "The markets breathe in uneasy equilibrium. Neither bulls nor bears have won today. A coin flip masquerades as a trend.",
+                "The markets breathe in uneasy equilibrium. Neither bulls nor bears have won today.",
                 "Sideways movement dominates. The cosmos is consolidating its thoughts before its next move.",
                 "Flat energy pervades the cryptosphere. The universe has entered a range-bound formation.",
             ])
         elif change < 4:
             mood = self.rng.choice([
                 "A gentle green aura washes over the market. Jupiter nods approvingly. Do not sell your house just yet.",
-                "Bulls cautiously emerge. The chart gods grant a reprieve. Enjoy it; Mercury returns next week.",
+                "Bulls cautiously emerge. The chart gods grant a reprieve. Enjoy it.",
                 "The market ascends {:.1f}%. The stars smile upon those who held through the darkness.".format(change),
             ])
         else:
@@ -150,173 +359,181 @@ class CryptoOracle:
                 "The market surges {:.1f}%. Even the bears are checking their wallets with one eye.".format(change),
             ])
 
-        # BTC dominance commentary
         if dominance > 58:
-            dom_line = f" Bitcoin tightens its iron grip at {dominance:.1f}% dominance. Alt season remains a rumor."
+            dom_line = f" Bitcoin tightens its grip at {dominance:.1f}% dominance. Alt season remains a rumor."
         elif dominance < 48:
             dom_line = f" Bitcoin's dominance slips to {dominance:.1f}%. The alts stir in their cages."
         else:
             dom_line = ""
 
-        # Volume energy
         if abs(vol_change) > 20:
-            vol_line = f" Unusual cosmic energy detected: volume has {'surged' if vol_change > 0 else 'collapsed'} {abs(vol_change):.0f}%."
+            vol_line = f" Volume has {'surged' if vol_change > 0 else 'collapsed'} {abs(vol_change):.0f}% — unusual cosmic energy."
         else:
             vol_line = ""
 
         return mood + dom_line + vol_line
 
-    # ── Per-coin readings ─────────────────────────────────────────────────
+    # ── speech generation (the three narrators) ───────────────────────────
 
-    def coin_reading(self, coin: dict) -> str:
-        name = coin["name"]
-        price = coin["price"]
-        d1h = coin.get("priceChange1h", 0) or 0
-        d1d = coin.get("priceChange1d", 0) or 0
-        d1w = coin.get("priceChange1w", 0) or 0
-        d1m = coin.get("priceChange1m", 0) or 0
+    def voices_for(self, coin_view: dict) -> dict:
+        """Return {mercury, venus, oracle} speeches for one coin."""
+        out = {}
+        for persona in PERSONAS:
+            text = None
+            if self._anthropic is not None:
+                try:
+                    text = _generate_with_llm(persona, coin_view, self.market,
+                                              self._anthropic, self._model)
+                    self._llm_ok = True
+                except Exception:
+                    text = None  # this voice quietly falls back
+            if text is None:
+                text = self._template_voice(persona["key"], coin_view)
+            out[persona["key"]] = text
+        return out
 
-        # Classify day
-        if d1d >= 8:
-            day_lines = [
-                f"{name} ascends {d1d:.1f}% toward the heavens. The cosmic bulls have chosen you.",
-                f"A moon-shot energy blesses {name} today: +{d1d:.1f}%. The chart forms what traders call 'very valid.'",
-                f"Jupiter aligns perfectly with {name}'s chart. +{d1d:.1f}%. Do not, however, buy more at the top.",
-            ]
-        elif d1d >= 3:
-            day_lines = [
-                f"{name} stirs from its slumber, rising {d1d:.1f}%. A gentle cosmic tailwind guides it upward.",
-                f"The stars grant {name} a mild blessing today: +{d1d:.1f}%. Modest gains for the patient soul.",
-                f"{name} nudges upward {d1d:.1f}%. Jupiter nods. The bulls take a small victory lap.",
-            ]
-        elif d1d >= -1:
-            day_lines = [
-                f"{name} meditates at {_fmt_price(price)}, moving with cosmic stillness. The universe has nothing dramatic to say today.",
-                f"Flat energy surrounds {name}. It exists. It breathes. The chart is technically a line.",
-                f"{name} consolidates its spiritual energy. Whether this is 'accumulation' or stagnation depends on your optimism.",
-            ]
-        elif d1d >= -5:
-            day_lines = [
-                f"{name} descends {abs(d1d):.1f}% as Mercury casts shadows across your holdings.",
-                f"The bears have touched {name}, leaving a mark of {d1d:.1f}%. Your conviction shall be tested.",
-                f"{name} dips {abs(d1d):.1f}%. The cosmos suggests you 'zoom out.' The chart, upon zooming out, still looks concerning.",
-            ]
+    def generate(self) -> list:
+        """Generate every coin's three voices (LLM calls run in parallel)."""
+        views = [self._coin_view(c) for c in self.coins]
+        if self._anthropic is not None:
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                voice_sets = list(pool.map(self.voices_for, views))
         else:
-            day_lines = [
-                f"{name} craters {d1d:.1f}% today. A blood moon rises over your position.",
-                f"Dark forces besiege {name}: {d1d:.1f}%. The word 'capitulation' appears in your fortune.",
-                f"Astral turbulence strikes {name} with {abs(d1d):.1f}% fury. This is not a good omen. You may still HODL if you wish.",
-            ]
+            voice_sets = [self.voices_for(v) for v in views]
 
-        reading = self.rng.choice(day_lines)
+        coins_out = []
+        for view, voices in zip(views, voice_sets):
+            entry = dict(view)
+            entry["voices"] = voices
+            coins_out.append(entry)
+        return coins_out
 
-        # Monthly context suffix
+    # ── template fallback voices (data-driven, no LLM) ────────────────────
+
+    def _template_voice(self, key: str, c: dict) -> str:
+        return {
+            "mercury": self._tpl_mercury,
+            "venus": self._tpl_venus,
+            "oracle": self._tpl_oracle,
+        }[key](c)
+
+    def _tpl_mercury(self, c: dict) -> str:
+        name, sym = c["name"], c["symbol"]
+        d1d, d1h = c["change_1d"], c["change_1h"]
+        vol = _fmt_abbrev(c["volume"])
+        rng = self.rng
+
+        entrance = rng.choice([
+            f"Just blew in from the {name} order books — wings still smoking.",
+            f"Out of my way, I've been tracking {sym} all morning.",
+            f"Quick, quick — caught the {sym} tape mid-flight.",
+        ])
+        move = (
+            f"{sym} is up {d1d:.1f}% on the day, {d1h:+.2f}% in just the last hour"
+            if d1d >= 0 else
+            f"{sym} is down {abs(d1d):.1f}% on the day, {d1h:+.2f}% in the last hour alone"
+        )
+        read = rng.choice([
+            "That's not drift — that's intent.",
+            "Somebody's in a hurry, and hurry leaves footprints.",
+            "Momentum like that doesn't apologize.",
+        ]) if abs(d1h) >= 0.4 else rng.choice([
+            "Barely a flutter — the tape's half-asleep.",
+            "Flat-footed, this one. No rush in the wires.",
+            "Quiet hands today. Quiet hands.",
+        ])
+        volume = rng.choice([
+            f"And {vol} changed hands in a day — that's the crowd voting with their feet.",
+            f"{vol} of volume behind it; follow the flow, not the feeling.",
+            f"Liquidity reads {vol} — thick enough to move fast, thin enough to get burned.",
+        ])
+        closer = rng.choice([
+            "Blink and it's gone. Move.",
+            "I don't predict — I report, and I report fast.",
+            "Speed is the only edge nobody can fake. Keep up.",
+        ])
+        return f"{entrance} {move} — {read} {volume} {closer}"
+
+    def _tpl_venus(self, c: dict) -> str:
+        name = c["name"]
+        d1d, d1w = c["change_1d"], c["change_1w"]
+        rng = self.rng
+
+        open_ = rng.choice(["Come closer, darling.", "Sweet one, sit with me.", "Hush now, and look."])
+        if d1d <= -3:
+            feel = f"{name} isn't falling {abs(d1d):.1f}% today — it's grieving."
+            mid = "This correction isn't logic, it's heartbreak made visible."
+        elif d1d < 0:
+            feel = f"{name} sighs {d1d:.1f}% lower, a small ache, nothing more."
+            mid = "Desire cools before it returns; this is the cooling."
+        elif d1d < 3:
+            feel = f"{name} warms {d1d:+.1f}% — a quiet flirtation with the bulls."
+            mid = "The market is testing whether it dares to want this again."
+        else:
+            feel = f"{name} blushes {d1d:+.1f}% today, flush with renewed wanting."
+            mid = "But beware — desire this loud often spends itself fast."
+        week = (
+            f"On the week it carries {d1w:+.1f}%, and the heart remembers the week longer than the hour."
+            if d1w != 0 else
+            "The week has barely stirred its feelings either way."
+        )
+        close = rng.choice([
+            "After grief comes hunger, and hunger drives the next rally. Be patient. Be ready.",
+            "Value is only desire that hasn't been priced in yet. Wait for the wanting.",
+            "Love what endures, not what merely moves. Venus knows the difference.",
+        ])
+        return f"{open_} {feel} {mid} {week} {close}"
+
+    def _tpl_oracle(self, c: dict) -> str:
+        name = c["name"]
+        price = _fmt_price(c["price"])
+        d1m, d1w = c["change_1m"], c["change_1w"]
+        rng = self.rng
+
+        riddle = rng.choice([
+            f"The figure {price} is not a resting place but a doorway {name} has yet to walk through.",
+            f"They call it {price}. The Oracle calls it a question wearing the mask of an answer.",
+            f"At {price} the coin stands — neither high nor low, only waiting to be told which it was.",
+        ])
         if d1m <= -20:
-            reading += self.rng.choice([
-                f" The moon of {name} has waned {abs(d1m):.0f}% this month. Patience is a virtue. So is a stop-loss.",
-                f" This month has not been kind: {d1m:.0f}%. The cosmos is telling you something; what exactly remains unclear.",
-            ])
+            cycle = f"It has shed {abs(d1m):.0f}% across the moon's full turn; three descents must pass before the crown returns."
+        elif d1m <= 0:
+            cycle = f"A slow tide of {d1m:.0f}% over thirty nights — the cycle exhales before it draws breath."
         elif d1m >= 20:
-            reading += self.rng.choice([
-                f" And yet — {name} still gleams +{d1m:.0f}% this month. The stars have not entirely abandoned you.",
-                f" Despite today's turbulence, the monthly chart whispers +{d1m:.0f}%. Perspective, pilgrim.",
-            ])
+            cycle = f"Risen {d1m:.0f}% in a single moon; what climbs without rest is taught humility by the floor."
+        else:
+            cycle = f"The thirty-day path reads {d1m:+.0f}% — the pattern hides in plain arithmetic."
+        week = rng.choice([
+            f"The week's {d1w:+.1f}% is a whisper; the year will speak the truth.",
+            f"Seven days gave {d1w:+.1f}%. Seven is never the number that matters.",
+        ])
+        close = rng.choice([
+            "You already know this. You simply refuse to see it.",
+            "The smoke has shown me. Whether you heed it is not my burden.",
+            "Return when the candles confirm what the Oracle has already said.",
+        ])
+        return f"{riddle} {cycle} {week} {close}"
 
-        return reading
-
-    # ── Special sections ──────────────────────────────────────────────────
-
-    def mercury_curse(self) -> Optional[tuple[dict, str]]:
-        """The worst daily performer gets Mercury's curse."""
-        worst = min(self.coins, key=lambda c: c.get("priceChange1d", 0) or 0)
-        change = worst.get("priceChange1d", 0) or 0
-        if change >= 0:
-            return None  # No curse if everything is up
-
-        curses = [
-            f"{worst['name']} has entered its shadow period. Consider burning sage. And your position.",
-            f"The cosmic forces single out {worst['name']} for special suffering today: {change:.1f}%.",
-            f"{worst['name']} bears Mercury's mark most heavily today. The chart forms what analysts call 'oh no.'",
-            f"Of all the coins, {worst['name']} draws the most astral ire: {change:.1f}%. Reflect on your choices.",
-        ]
-        return worst, self.rng.choice(curses)
-
-    def venus_blessing(self) -> Optional[tuple[dict, str]]:
-        """The best performer (weekly) receives Venus's blessing."""
-        best = max(self.coins, key=lambda c: c.get("priceChange1w", 0) or 0)
-        change = best.get("priceChange1w", 0) or 0
-        if change <= 0:
-            return None
-
-        blessings = [
-            f"Venus smiles upon {best['name']} this week: +{change:.1f}%. The cosmos rewards the believer.",
-            f"{best['name']} basks in celestial favor with a weekly gain of +{change:.1f}%. The stars have a favorite.",
-            f"Of your holdings, {best['name']} has most pleased the market gods this week: +{change:.1f}%.",
-            f"The stellar winds carry {best['name']} higher: +{change:.1f}% on the week. Glory to those who held.",
-        ]
-        return best, self.rng.choice(blessings)
-
-    def prophecy(self) -> str:
-        """A forward-looking statement of magnificent vagueness."""
-        prophesies = [
-            "A pattern forms on the charts. Analysts shall name it something confident. They will disagree.",
-            "A whale stirs in the deep. Its movements will be described as 'bullish' and 'bearish' simultaneously by different influencers.",
-            "Volatility approaches from the northwest. The candles that follow will be colorful.",
-            "An announcement looms. Its price impact will be the opposite of what you expect.",
-            "The stars foresee a consolidation phase. It will last either 3 days or 6 months. The cosmos has not decided.",
-            "Someone, somewhere, is about to post a chart with seven indicators and one conclusion. They are very confident.",
-            "A support level will be tested. Whether it holds depends on factors the astrologer declines to specify.",
-            "The number 'go up' appears in your financial future. Timing remains cosmically ambiguous.",
-        ]
-        return self.rng.choice(prophesies)
-
-    def lucky_numbers(self) -> list[str]:
-        """Lucky numbers are just the current prices. Obviously."""
-        selected = self.rng.sample(self.coins, min(3, len(self.coins)))
-        return [_fmt_price(c["price"]) for c in selected]
-
-    # ── Full reading ──────────────────────────────────────────────────────
+    # ── assemble ──────────────────────────────────────────────────────────
 
     def full_reading(self) -> dict:
-        """Assemble the complete horoscope data."""
+        coins = self.generate()
+        self.source = "ai" if self._llm_ok else "templates"
         return {
             "date": self.date.isoformat(),
+            "narrators_source": self.source,
             "market": {
-                "cap": self.market.get("marketCap", 0),
-                "cap_change": self.market.get("marketCapChange", 0),
-                "btc_dominance": self.market.get("btcDominance", 0),
-                "volume": self.market.get("volume", 0),
+                "cap": self.market["cap"],
+                "cap_change": self.market["cap_change"],
+                "btc_dominance": self.market["btc_dominance"],
+                "volume": self.market["volume"],
                 "reading": self.market_reading(),
             },
-            "coins": [
-                {
-                    "symbol": c["symbol"],
-                    "name": c["name"],
-                    "price": c["price"],
-                    "change_1h": c.get("priceChange1h", 0),
-                    "change_1d": c.get("priceChange1d", 0),
-                    "change_1w": c.get("priceChange1w", 0),
-                    "change_1m": c.get("priceChange1m", 0),
-                    "reading": self.coin_reading(c),
-                }
-                for c in self.coins
-            ],
-            "mercury_curse": (
-                lambda r: {"symbol": r[0]["symbol"], "name": r[0]["name"],
-                           "change_1d": r[0].get("priceChange1d", 0), "reading": r[1]}
-                if r else None
-            )(self.mercury_curse()),
-            "venus_blessing": (
-                lambda r: {"symbol": r[0]["symbol"], "name": r[0]["name"],
-                           "change_1w": r[0].get("priceChange1w", 0), "reading": r[1]}
-                if r else None
-            )(self.venus_blessing()),
-            "prophecy": self.prophecy(),
-            "lucky_numbers": self.lucky_numbers(),
+            "coins": coins,
         }
 
 
-# ─── Renderers ───────────────────────────────────────────────────────────────
+# ─── Formatting helpers ──────────────────────────────────────────────────────
 
 def _fmt_price(price: float) -> str:
     if price >= 1000:
@@ -331,13 +548,25 @@ def _fmt_price(price: float) -> str:
         return f"${price:.2e}"
 
 
+def _fmt_abbrev(n: float) -> str:
+    n = float(n or 0)
+    if n >= 1e12:
+        return f"${n/1e12:.2f}T"
+    if n >= 1e9:
+        return f"${n/1e9:.2f}B"
+    if n >= 1e6:
+        return f"${n/1e6:.2f}M"
+    if n >= 1e3:
+        return f"${n/1e3:.2f}K"
+    return f"${n:,.0f}"
+
+
 def _pct_str(val: float) -> str:
     arrow = "▲" if val > 0 else "▼"
     return f"{arrow}{abs(val):.2f}%"
 
 
 def _pct_color(val: float) -> str:
-    """Rich color for a percentage value."""
     if val >= 3:
         return "bold green"
     elif val >= 0:
@@ -348,8 +577,94 @@ def _pct_color(val: float) -> str:
         return "bold red"
 
 
+# ─── Animated renderer ───────────────────────────────────────────────────────
+
+def _sleep(seconds: float) -> None:
+    if ANIMATE:
+        time.sleep(seconds)
+
+
+def _wrap(text: str, pad: int = 4) -> str:
+    width = (console.width if console else 80) - pad - 2
+    width = max(36, min(width, 78))
+    lines = []
+    for para in text.split("\n"):
+        if not para.strip():
+            lines.append("")
+            continue
+        lines.extend(textwrap.wrap(para, width=width) or [""])
+    indent = " " * pad
+    return "\n".join((indent + ln) if ln else "" for ln in lines)
+
+
+def _typewriter(text: str, style: str, char_delay: float = 0.015) -> None:
+    body = _wrap(text)
+    if not ANIMATE:
+        console.print(Text(body, style=style), soft_wrap=True)
+        return
+    for ch in body:
+        console.print(Text(ch, style=style), end="", soft_wrap=True)
+        sys.stdout.flush()
+        if ch != " ":
+            time.sleep(char_delay)
+    console.print()
+
+
+def _reveal_persona(persona: dict, speech: str) -> None:
+    # 0.4s pause, then the summoning line in dim italic
+    _sleep(0.4)
+    console.print()
+    console.print(Text("    " + persona["summon"], style="dim italic " + persona["accent"]))
+
+    # Portrait, line by line
+    for line in persona["art"].splitlines():
+        console.print(Text("   " + line, style=persona["art_style"]), soft_wrap=True)
+        _sleep(0.05)
+
+    # Name plate
+    plate = Text("   ")
+    plate.append(f"{persona['glyph']}  {persona['name'].upper()}", style="bold " + persona["accent"])
+    plate.append("  ·  ", style="dim")
+    plate.append(persona["title"], style="italic dim " + persona["accent"])
+    console.print()
+    console.print(plate)
+    console.print()
+
+    # 0.3s pause, then the speech streams in
+    _sleep(0.3)
+    _typewriter(speech, persona["speech_style"])
+
+
+def _coin_stage_header(coin: dict) -> None:
+    sym = coin["symbol"]
+    glyph = COIN_GLYPHS.get(sym, "◈")
+
+    title = Text()
+    title.append(f"  {glyph}  ", style="gold1")
+    title.append(coin["name"], style="bold bright_white")
+    title.append(f"  {sym}  ", style="dim")
+    console.rule(title, style="medium_purple")
+    console.print()
+
+    stats = Text("   ", justify="left")
+    stats.append(_fmt_price(coin["price"]), style="bold bright_white")
+    stats.append("    ")
+    for label, val in (("1h", coin["change_1h"]), ("1d", coin["change_1d"]),
+                       ("1w", coin["change_1w"]), ("1m", coin["change_1m"])):
+        stats.append(f"{label} ", style="dim")
+        stats.append(_pct_str(val) + "  ", style=_pct_color(val))
+    console.print(stats)
+    second = Text("   ")
+    second.append("vol ", style="dim")
+    second.append(_fmt_abbrev(coin["volume"]), style="bright_white")
+    second.append("    mcap ", style="dim")
+    second.append(_fmt_abbrev(coin["market_cap"]), style="bright_white")
+    second.append(f"    rank #{coin['rank']}", style="dim")
+    console.print(second)
+
+
 def render_rich(reading: dict) -> None:
-    """Beautiful terminal output using Rich."""
+    """Animated, theatrical terminal output: three narrators per coin."""
     today = datetime.fromisoformat(reading["date"]).strftime("%A, %B %-d, %Y")
     market = reading["market"]
 
@@ -357,152 +672,49 @@ def render_rich(reading: dict) -> None:
     header_text = Text(justify="center")
     header_text.append("🔮  Crypto Horoscope\n", style="bold gold1")
     header_text.append(f"{today}\n", style="bright_white")
-    header_text.append("✦  ·  ✦  ·  ✦  ·  ✦  ·  ✦  ·  ✦", style="dim yellow")
+    header_text.append("☿  ·  ♀  ·  🔮", style="dim medium_purple")
 
     console.print()
-    console.print(Panel(
-        Align.center(header_text),
-        border_style="medium_purple",
-        padding=(1, 4),
-    ))
+    console.print(Panel(Align.center(header_text), border_style="medium_purple", padding=(1, 4)))
     console.print()
 
-    # ── Market overview ───────────────────────────────────────────────────
-    cap_b = market["cap"] / 1e12
-    vol_b = market["volume"] / 1e9
-    cap_change = market["cap_change"]
-    dom = market["btc_dominance"]
-
+    # ── Market overview (scene-setting, not a narrator) ───────────────────
     stats = Table.grid(padding=(0, 3))
     stats.add_column(style="dim")
     stats.add_column(style="bold bright_white")
-    stats.add_row("Market Cap", f"${cap_b:.2f}T")
-    stats.add_row("Volume 24h", f"${vol_b:.1f}B")
-    stats.add_row("BTC Dominance", f"{dom:.1f}%")
-    stats.add_row(
-        "24h Change",
-        Text(_pct_str(cap_change), style=_pct_color(cap_change)),
-    )
-
-    market_content = Group(
-        stats,
-        Text(""),
-        Text(market["reading"], style="italic #c9b8f0"),
-    )
+    stats.add_row("Market Cap", _fmt_abbrev(market["cap"]))
+    stats.add_row("Volume 24h", _fmt_abbrev(market["volume"]))
+    stats.add_row("BTC Dominance", f"{market['btc_dominance']:.1f}%")
+    stats.add_row("24h Change", Text(_pct_str(market["cap_change"]), style=_pct_color(market["cap_change"])))
 
     console.print(Panel(
-        market_content,
+        Group(stats, Text(""), Text(market["reading"], style="italic #c9b8f0")),
         title="[bold cyan]✦  The Cosmic Market[/]",
         border_style="cyan",
         padding=(1, 2),
     ))
     console.print()
 
-    # ── Coin panels ───────────────────────────────────────────────────────
-    console.rule("[bold medium_purple]✦  Your Signs  ✦[/]", style="dim medium_purple")
+    intro = Text(justify="center")
+    intro.append("Three narrators have gathered to read your coins.", style="dim italic medium_purple")
+    console.print(Align.center(intro))
     console.print()
 
+    # ── Per-coin stage: Mercury, Venus, the Oracle ────────────────────────
     for coin in reading["coins"]:
-        sym = coin["symbol"]
-        glyph = COIN_GLYPHS.get(sym, "◈")
-        price = coin["price"]
-        d1h = coin.get("change_1h", 0) or 0
-        d   = coin.get("change_1d", 0) or 0
-        w   = coin.get("change_1w", 0) or 0
-        m   = coin.get("change_1m", 0) or 0
-
-        # Border tint follows daily trend
-        if d >= 3:
-            border = "green3"
-        elif d <= -5:
-            border = "red3"
-        else:
-            border = "medium_purple"
-
-        stats_text = Text()
-        stats_text.append(_fmt_price(price), style="bold bright_white")
-        stats_text.append("     ")
-        stats_text.append("1h ", style="dim")
-        stats_text.append(_pct_str(d1h), style=_pct_color(d1h))
-        stats_text.append("   1d ", style="dim")
-        stats_text.append(_pct_str(d), style=_pct_color(d))
-        stats_text.append("   1w ", style="dim")
-        stats_text.append(_pct_str(w), style=_pct_color(w))
-        stats_text.append("   1m ", style="dim")
-        stats_text.append(_pct_str(m), style=_pct_color(m))
-
-        coin_content = Group(
-            stats_text,
-            Text(""),
-            Text(f'"{coin["reading"]}"', style="italic #c9b8f0"),
-        )
-
-        console.print(Panel(
-            coin_content,
-            title=f"[gold1]{glyph}[/]  [bold white]{coin['name']}[/]  [dim]{sym}[/]",
-            border_style=border,
-            padding=(1, 2),
-        ))
+        _coin_stage_header(coin)
+        for persona in PERSONAS:
+            _reveal_persona(persona, coin["voices"][persona["key"]])
+        _sleep(0.5)
         console.print()
-
-    # ── Mercury's Curse ───────────────────────────────────────────────────
-    curse = reading.get("mercury_curse")
-    if curse:
-        c_glyph = COIN_GLYPHS.get(curse["symbol"], "◈")
-        curse_header = Text()
-        curse_header.append(f"{c_glyph}  {curse['symbol']}  ", style="bold red")
-        curse_header.append(_pct_str(curse["change_1d"]) + " today", style="bold red")
-
-        console.print(Panel(
-            Group(
-                curse_header,
-                Text(""),
-                Text(f'"{curse["reading"]}"', style="italic #ffb3b3"),
-            ),
-            title="[bold red]☿  Mercury's Curse  —  Worst Today[/]",
-            border_style="red",
-            padding=(1, 2),
-        ))
+        console.rule("✦", style="dim medium_purple")
         console.print()
-
-    # ── Venus's Blessing ──────────────────────────────────────────────────
-    blessing = reading.get("venus_blessing")
-    if blessing:
-        b_glyph = COIN_GLYPHS.get(blessing["symbol"], "◈")
-        blessing_header = Text()
-        blessing_header.append(f"{b_glyph}  {blessing['symbol']}  ", style="bold green3")
-        blessing_header.append(f"+{abs(blessing['change_1w']):.1f}% this week", style="bold green3")
-
-        console.print(Panel(
-            Group(
-                blessing_header,
-                Text(""),
-                Text(f'"{blessing["reading"]}"', style="italic #b3ffcc"),
-            ),
-            title="[bold green3]♀  Venus's Blessing  —  Weekly Brightest[/]",
-            border_style="green3",
-            padding=(1, 2),
-        ))
-        console.print()
-
-    # ── Prophecy ─────────────────────────────────────────────────────────
-    lucky = "   ✦   ".join(reading["lucky_numbers"])
-    console.print(Panel(
-        Group(
-            Text(f'"{reading["prophecy"]}"', style="italic bright_white"),
-            Text(""),
-            Text(f"Lucky numbers:  {lucky}", style="dim gold1"),
-        ),
-        title="[bold magenta]🔮  Today's Prophecy[/]",
-        border_style="magenta",
-        padding=(1, 2),
-    ))
 
     # ── Footer ────────────────────────────────────────────────────────────
-    console.print()
+    src = "AI narrators (Claude)" if reading.get("narrators_source") == "ai" else "built-in narrators"
     console.rule(
-        "[dim]Powered by [link=https://coinstats.app/api/]CoinStats API[/link]"
-        "  ·  coinstats.app/api  ·  Not financial advice. Also not actual astrology.[/]",
+        f"[dim]{src}  ·  Powered by [link=https://coinstats.app/api/]CoinStats API[/link]"
+        "  ·  Not financial advice. Also not actual astrology.[/]",
         style="dim medium_purple",
     )
     console.print()
@@ -513,78 +725,56 @@ def render_plain(reading: dict) -> None:
     today = datetime.fromisoformat(reading["date"]).strftime("%A, %B %d, %Y")
     market = reading["market"]
 
-    sep = "=" * 60
+    sep = "=" * 64
     print(f"\n{sep}")
     print(f"  Crypto Horoscope — {today}")
     print(sep)
-
-    cap_b = market["cap"] / 1e12
-    print(f"\n  Market Cap: ${cap_b:.2f}T  ({_pct_str(market['cap_change'])})")
+    print(f"\n  Market Cap: {_fmt_abbrev(market['cap'])}  ({_pct_str(market['cap_change'])})")
     print(f"  BTC Dominance: {market['btc_dominance']:.1f}%")
-    print(f"\n  {market['reading']}")
-    print()
+    print(f"\n  {market['reading']}\n")
 
-    print("  YOUR SIGNS")
-    print("  " + "-" * 40)
     for coin in reading["coins"]:
-        d = coin["change_1d"]
-        w = coin["change_1w"]
-        print(f"\n  {coin['symbol']} {_fmt_price(coin['price'])}  1d {_pct_str(d)}  1w {_pct_str(w)}")
-        print(f"  {coin['reading']}")
+        print("\n" + "-" * 64)
+        print(f"  {coin['symbol']}  {coin['name']}   {_fmt_price(coin['price'])}"
+              f"   1d {_pct_str(coin['change_1d'])}  1w {_pct_str(coin['change_1w'])}")
+        print("-" * 64)
+        for persona in PERSONAS:
+            print(f"\n  {persona['glyph']} {persona['name'].upper()} — {persona['title']}")
+            for line in textwrap.wrap(coin["voices"][persona["key"]], width=60):
+                print(f"    {line}")
 
-    curse = reading.get("mercury_curse")
-    if curse:
-        print(f"\n  MERCURY'S CURSE: {curse['symbol']} {_pct_str(curse['change_1d'])} today")
-        print(f"  {curse['reading']}")
-
-    blessing = reading.get("venus_blessing")
-    if blessing:
-        print(f"\n  VENUS'S BLESSING: {blessing['symbol']} +{abs(blessing['change_1w']):.1f}% this week")
-        print(f"  {blessing['reading']}")
-
-    print(f"\n  PROPHECY: \"{reading['prophecy']}\"")
-    print(f"  Lucky numbers: {'  ·  '.join(reading['lucky_numbers'])}")
+    src = "AI narrators (Claude)" if reading.get("narrators_source") == "ai" else "built-in narrators"
     print(f"\n{sep}")
-    print("  Powered by CoinStats API (https://coinstats.app/api/)")
+    print(f"  {src} · Powered by CoinStats API (https://coinstats.app/api/)")
     print("  Not financial advice. Also not actual astrology.")
     print(f"{sep}\n")
 
 
 def render_share(reading: dict) -> None:
-    """Compact share-friendly output for Discord / Twitter / Slack."""
+    """Compact share-friendly output for Discord / Slack / Twitter."""
     today = datetime.fromisoformat(reading["date"]).strftime("%b %-d, %Y")
     market = reading["market"]
 
     lines = [
         f"🔮 Crypto Horoscope — {today}",
         "",
-        f"Market: ${market['cap']/1e12:.2f}T  {_pct_str(market['cap_change'])}  BTC dom {market['btc_dominance']:.1f}%",
-        f"\"{market['reading'][:120]}\"" if len(market['reading']) > 120 else f"\"{market['reading']}\"",
+        f"Market: {_fmt_abbrev(market['cap'])}  {_pct_str(market['cap_change'])}  "
+        f"BTC dom {market['btc_dominance']:.1f}%",
         "",
     ]
-
     for coin in reading["coins"]:
         glyph = COIN_GLYPHS.get(coin["symbol"], "◈")
         lines.append(
             f"{glyph} {coin['symbol']} {_fmt_price(coin['price'])}  "
             f"1d {_pct_str(coin['change_1d'])}  1w {_pct_str(coin['change_1w'])}"
         )
+        for persona in PERSONAS:
+            voice = coin["voices"][persona["key"]]
+            snippet = voice if len(voice) <= 150 else voice[:147].rstrip() + "…"
+            lines.append(f"  {persona['glyph']} {snippet}")
+        lines.append("")
 
-    curse = reading.get("mercury_curse")
-    blessing = reading.get("venus_blessing")
-    lines.append("")
-    if curse:
-        lines.append(f"☿ Cursed: {curse['symbol']} {_pct_str(curse['change_1d'])}")
-    if blessing:
-        lines.append(f"♀ Blessed: {blessing['symbol']} +{abs(blessing['change_1w']):.1f}% this week")
-
-    lines += [
-        "",
-        f"🔮 \"{reading['prophecy']}\"",
-        "",
-        "Powered by @CoinStatsApp · coinstats.app/api",
-    ]
-
+    lines.append("Powered by @CoinStatsApp · coinstats.app/api")
     print("\n".join(lines))
 
 
@@ -601,8 +791,10 @@ def get_api_key() -> str:
 
 
 def main():
+    global ANIMATE
+
     parser = argparse.ArgumentParser(
-        description="🔮 Crypto Horoscope: daily cosmic guidance powered by real market data",
+        description="🔮 Crypto Horoscope: three narrators read your coins from live market data",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 examples:
@@ -610,52 +802,48 @@ examples:
   python horoscope.py BTC ETH SOL DOGE     # your holdings
   python horoscope.py --share BTC ETH      # shareable text
   python horoscope.py --json BTC ETH       # JSON output
+  python horoscope.py --no-animate BTC     # skip the reveal animation
 
 environment:
   COINSTATS_API_KEY    your CoinStats API key (required)
+  ANTHROPIC_API_KEY    optional — AI-generated narrator speeches via Claude
+  ANTHROPIC_MODEL      optional — model id (default: claude-sonnet-4-6)
         """,
     )
-    parser.add_argument(
-        "coins",
-        nargs="*",
-        metavar="SYMBOL",
-        help="coin symbols to read (default: top 10 by market cap)",
-    )
-    parser.add_argument(
-        "--share",
-        action="store_true",
-        help="compact shareable output for Discord/Slack/Twitter",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        dest="json_out",
-        help="output raw JSON",
-    )
-    parser.add_argument(
-        "--plain",
-        action="store_true",
-        help="plain text output (no Rich formatting)",
-    )
-    parser.add_argument(
-        "--version",
-        action="version",
-        version=f"Crypto Horoscope {VERSION}",
-    )
+    parser.add_argument("coins", nargs="*", metavar="SYMBOL",
+                        help="coin symbols to read (default: top 10 by market cap)")
+    parser.add_argument("--share", action="store_true",
+                        help="compact shareable output for Discord/Slack/Twitter")
+    parser.add_argument("--json", action="store_true", dest="json_out", help="output raw JSON")
+    parser.add_argument("--plain", action="store_true", help="plain text output (no Rich)")
+    parser.add_argument("--no-animate", action="store_true", dest="no_animate",
+                        help="render instantly, without the reveal animation")
+    parser.add_argument("--version", action="version", version=f"Crypto Horoscope {VERSION}")
     args = parser.parse_args()
 
     api_key = get_api_key()
     client = CoinStatsClient(api_key)
 
-    # Fetch data
+    rich_path = HAS_RICH and not args.json_out and not args.share and not args.plain
+
     try:
-        if HAS_RICH and not args.json_out and not args.share and not args.plain:
+        if rich_path:
             with console.status("[dim]Consulting the stars…[/]"):
                 all_coins = client.get_top_coins(limit=500)
                 market = client.get_market()
+                symbols = [s.upper() for s in args.coins] if args.coins else DEFAULT_COINS
+                coins = client.filter_by_symbols(all_coins, symbols)
+                if coins:
+                    stage = NarratorStage(coins, market, date.today())
+                    reading = stage.full_reading()
         else:
             all_coins = client.get_top_coins(limit=500)
             market = client.get_market()
+            symbols = [s.upper() for s in args.coins] if args.coins else DEFAULT_COINS
+            coins = client.filter_by_symbols(all_coins, symbols)
+            if coins:
+                stage = NarratorStage(coins, market, date.today())
+                reading = stage.full_reading()
     except requests.HTTPError as e:
         print(f"API error: {e}")
         sys.exit(1)
@@ -663,18 +851,10 @@ environment:
         print("Connection error: check your internet connection.")
         sys.exit(1)
 
-    # Resolve requested symbols
-    symbols = [s.upper() for s in args.coins] if args.coins else DEFAULT_COINS
-    coins = client.filter_by_symbols(all_coins, symbols)
-
     if not coins:
         print(f"No matching coins found for: {', '.join(symbols)}")
         print("Try common symbols like BTC, ETH, SOL, DOGE, ADA…")
         sys.exit(1)
-
-    # Generate reading
-    oracle = CryptoOracle(coins, market, date.today())
-    reading = oracle.full_reading()
 
     # Render
     if args.json_out:
@@ -684,6 +864,7 @@ environment:
     elif args.plain or not HAS_RICH:
         render_plain(reading)
     else:
+        ANIMATE = (not args.no_animate) and console.is_terminal
         render_rich(reading)
 
 

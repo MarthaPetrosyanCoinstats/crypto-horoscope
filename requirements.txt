@@ -1,2 +1,5 @@
 requests>=2.28.0
 rich>=13.0.0
+# Optional — enables AI-generated narrator speeches via Claude.
+# Without it, the three narrators speak via built-in, data-driven templates.
+# anthropic>=0.40.0
