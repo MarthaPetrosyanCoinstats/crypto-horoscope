@@ -183,6 +183,70 @@
 
     .coin-read { font-size:12px; color:var(--muted); line-height:1.55; font-style:italic; }
 
+    /* ── COIN CARD LIVING ANIMATIONS ──────────────────── */
+    .coin-card { position: relative; }
+
+    /* Color-tinted glow border pulse on ::after (doesn't fight the rise animation) */
+    .coin-card.card-down::after,
+    .coin-card.card-up::after {
+      content: ''; position: absolute; inset: 0;
+      border-radius: var(--r-lg); pointer-events: none;
+      animation: cardGlow 6s ease-in-out infinite;
+    }
+    .coin-card.card-down::after { box-shadow: inset 0 0 0 1px rgba(248,113,113,.28), 0 0 24px rgba(248,113,113,.1); }
+    .coin-card.card-up::after   { box-shadow: inset 0 0 0 1px rgba(74,222,128,.28),  0 0 24px rgba(74,222,128,.1);  animation-delay: 3s; }
+    @keyframes cardGlow {
+      0%, 45%, 100% { opacity: 0; }
+      22%            { opacity: 1; }
+    }
+
+    /* Coin icon: gentle bob */
+    .coin-ico { animation: iconBob 4s ease-in-out infinite; }
+    .ico-eth  { animation-delay: .8s; }
+    .ico-sol  { animation-delay: 1.6s; }
+    .ico-doge { animation-delay: 2.4s; }
+    @keyframes iconBob {
+      0%, 100% { transform: scale(1)    translateY(0); }
+      50%       { transform: scale(1.1) translateY(-2px); }
+    }
+
+    /* Badge: heartbeat */
+    .coin-badge { animation: badgeHb 3s ease-in-out infinite; }
+    .coin-card:nth-child(2) .coin-badge { animation-delay: .75s; }
+    .coin-card:nth-child(3) .coin-badge { animation-delay: 1.5s; }
+    .coin-card:nth-child(4) .coin-badge { animation-delay: 2.25s; }
+    @keyframes badgeHb {
+      0%, 35%, 65%, 100% { transform: scale(1); }
+      50% { transform: scale(1.07); }
+    }
+
+    /* Price: shimmer sweep */
+    .coin-price { position: relative; overflow: hidden; }
+    .coin-price::after {
+      content: ''; position: absolute;
+      top: 0; left: -70%; width: 45%; height: 100%;
+      background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,.11) 50%, transparent 80%);
+      animation: priceShimmer 5.5s ease-in-out infinite;
+    }
+    .coin-card:nth-child(2) .coin-price::after { animation-delay: 1.4s; }
+    .coin-card:nth-child(3) .coin-price::after { animation-delay: 2.8s; }
+    .coin-card:nth-child(4) .coin-price::after { animation-delay: 4.2s; }
+    @keyframes priceShimmer {
+      0%, 60% { left: -70%; }
+      80% { left: 110%; }
+      100% { left: 110%; }
+    }
+
+    /* Sparkline: live dot at current price end */
+    .spark-end {
+      transform-box: fill-box; transform-origin: center;
+      animation: liveBlip 2s ease-in-out infinite;
+    }
+    @keyframes liveBlip {
+      0%, 100% { transform: scale(1);   opacity: 1; }
+      50%       { transform: scale(2.8); opacity: .2; }
+    }
+
     /* ── COSMOS CANVAS ────────────────────────────────── */
     .reading-section { position: relative; }
     .cosmos-canvas {
@@ -432,7 +496,7 @@
     <!-- Coin cards -->
     <div class="coins-grid">
 
-      <div class="coin-card" data-delay="0">
+      <div class="coin-card card-down" data-delay="0">
         <div class="coin-head">
           <div class="coin-ico ico-btc">₿</div>
           <div><div class="coin-nm">Bitcoin</div><div class="coin-sy">BTC</div></div>
@@ -441,11 +505,12 @@
         <div class="coin-badge down">▼ 1.98% today</div>
         <svg class="sparkline" viewBox="0 0 120 36" fill="none" preserveAspectRatio="none">
           <polyline class="spark" points="0,10 14,13 28,9 42,15 56,18 70,22 84,19 98,24 120,27" stroke="#f87171" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle class="spark-end" cx="120" cy="27" r="2.5" fill="#f87171"/>
         </svg>
         <div class="coin-read">"The bears have touched Bitcoin, leaving a mark of −2%. Your conviction shall be tested — probably again tomorrow."</div>
       </div>
 
-      <div class="coin-card" data-delay="120">
+      <div class="coin-card card-down" data-delay="120">
         <div class="coin-head">
           <div class="coin-ico ico-eth">Ξ</div>
           <div><div class="coin-nm">Ethereum</div><div class="coin-sy">ETH</div></div>
@@ -454,11 +519,12 @@
         <div class="coin-badge down">▼ 2.75% today</div>
         <svg class="sparkline" viewBox="0 0 120 36" fill="none" preserveAspectRatio="none">
           <polyline class="spark" points="0,8 14,12 28,7 42,14 56,17 70,21 84,24 98,21 120,26" stroke="#f87171" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle class="spark-end" cx="120" cy="26" r="2.5" fill="#f87171"/>
         </svg>
         <div class="coin-read">"Ethereum dips 2.75%. The moon of ETH has waned 20% this month. Zoom out, they say. Still looks concerning."</div>
       </div>
 
-      <div class="coin-card" data-delay="240">
+      <div class="coin-card card-up" data-delay="240">
         <div class="coin-head">
           <div class="coin-ico ico-sol">◎</div>
           <div><div class="coin-nm">Solana</div><div class="coin-sy">SOL</div></div>
@@ -467,11 +533,12 @@
         <div class="coin-badge up">▲ 1.88% this week</div>
         <svg class="sparkline" viewBox="0 0 120 36" fill="none" preserveAspectRatio="none">
           <polyline class="spark" points="0,26 14,22 28,28 42,23 56,19 70,16 84,20 98,14 120,11" stroke="#4ade80" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle class="spark-end" cx="120" cy="11" r="2.5" fill="#4ade80"/>
         </svg>
         <div class="coin-read">"Solana, this week's quiet overachiever. The stellar winds carry it higher. Glory to those who held."</div>
       </div>
 
-      <div class="coin-card" data-delay="360">
+      <div class="coin-card card-down" data-delay="360">
         <div class="coin-head">
           <div class="coin-ico ico-doge">Ð</div>
           <div><div class="coin-nm">Dogecoin</div><div class="coin-sy">DOGE</div></div>
@@ -480,6 +547,7 @@
         <div class="coin-badge down">▼ 20.5% this month</div>
         <svg class="sparkline" viewBox="0 0 120 36" fill="none" preserveAspectRatio="none">
           <polyline class="spark" points="0,7 14,11 28,14 42,11 56,17 70,22 84,24 98,26 120,29" stroke="#f87171" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle class="spark-end" cx="120" cy="29" r="2.5" fill="#f87171"/>
         </svg>
         <div class="coin-read">"The moon of Dogecoin has waned 20% this month. Patience is a virtue. So is a stop-loss. Much dip."</div>
       </div>
